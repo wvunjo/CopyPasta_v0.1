@@ -111,6 +111,6 @@ This is currently a personal project, but contributions are welcome! Feel free t
 ---
 
 **Version**: 0.1.0  
-**Release Date**: January 2024  
+**Release Date**: August 2025 
 **Status**: Foundation Complete - Ready for Enhancement
 
