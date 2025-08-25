@@ -1,4 +1,4 @@
-# CopyPasta Native v0.1
+# CopyPasta Native v0.1.1
 
 A native Windows code snippet manager built with C# WPF and Material Design.
 
@@ -13,16 +13,33 @@ CopyPasta Native is a personal code snippet manager that functions as a develope
 - **Tag-based organization** for easy categorization
 - **Search functionality** to find snippets quickly
 - **Copy-to-clipboard** with one click
-- **Dark/light theme toggle**
+- **Dark/light theme toggle** with consistent theming across all operations
 - **Local JSON storage** - your data stays on your machine
 - **Modern Material Design UI**
+- **Real-time tag filtering** with immediate visual feedback
+- **Persistent theme consistency** across all UI operations
+
+## 🆕 **What's New in v0.1.1**
+
+### **Bug Fixes & Improvements**
+- **Fixed tag filtering system** - Now filters snippets immediately upon tag selection (not on deselection)
+- **Resolved dark theme inconsistencies** - Dark mode now maintains consistency across all UI sections and operations
+- **Eliminated false error dialogs** - Copy operations no longer show unnecessary error messages
+- **Improved UI responsiveness** - Tag filtering and snippet operations are now immediate and smooth
+- **Enhanced theme persistence** - Dark theme is maintained during filtering, CRUD operations, and data refresh
+
+### **Technical Improvements**
+- **Replaced data binding approach** with direct UI manipulation for better performance
+- **Implemented new filtering system** (`ApplyNewFilteringSystem`) for reliable tag-based filtering
+- **Enhanced theme application** to cover all UI elements consistently
+- **Streamlined copy functionality** for clean, error-free operations
 
 ## 🛠 **Tech Stack**
 
 - **Framework**: .NET 8.0 WPF
 - **UI**: Material Design for WPF
 - **Storage**: Local JSON files (stored in `%APPDATA%\CopyPasta\`)
-- **Architecture**: MVVM pattern with data binding
+- **Architecture**: Direct UI manipulation with theme consistency management
 
 ## 📁 **Project Structure**
 
@@ -61,8 +78,9 @@ CopyPastaNative/
 2. **Edit**: Click the edit button on any snippet to modify it
 3. **Copy**: Click the copy button to copy code to clipboard
 4. **Search**: Use the search bar to find snippets by title, language, or tags
-5. **Filter**: Click on tags to filter snippets
-6. **Theme**: Toggle between light and dark themes
+5. **Filter**: Click on tags to filter snippets (immediate filtering)
+6. **Theme**: Toggle between light and dark themes (consistent across all operations)
+7. **Clear Filters**: Reset to show all snippets
 
 ## 🔧 **Development**
 
@@ -110,7 +128,7 @@ This is currently a personal project, but contributions are welcome! Feel free t
 
 ---
 
-**Version**: 0.1.0  
-**Release Date**: January 2024  
-**Status**: Foundation Complete - Ready for Enhancement
+**Version**: 0.1.1  
+**Release Date**: August 2025  
+**Status**: Stable Release - Major Bug Fixes & Theme Improvements Complete
 

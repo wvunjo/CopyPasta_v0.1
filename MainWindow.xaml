@@ -49,15 +49,21 @@
                 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Button x:Name="ThemeToggleButton" 
-                            Style="{DynamicResource MaterialDesignIconButton}"
                             ToolTip="Toggle Theme"
+                            Width="60" Height="48"
+                            Background="Transparent"
+                            BorderBrush="White"
+                            BorderThickness="2"
+                            Foreground="White"
+                            FontSize="16"
+                            FontWeight="Bold"
+                            Margin="0,0,50,0"
                             Click="ThemeToggleButton_Click">
-                        <materialDesign:PackIcon Kind="WeatherNight" Width="24" Height="24"/>
+                        🌙
                     </Button>
                     
                     <Button x:Name="NewSnippetButton" 
                             Style="{DynamicResource MaterialDesignRaisedButton}"
-                            Margin="16,0,0,0"
                             Click="NewSnippetButton_Click">
                         <StackPanel Orientation="Horizontal">
                             <materialDesign:PackIcon Kind="Plus" Width="20" Height="20" Margin="0,0,8,0"/>
@@ -69,12 +75,12 @@
         </materialDesign:ColorZone>
 
         <!-- Main Content -->
-        <Grid Grid.Row="1" Margin="16">
+        <Grid x:Name="MainContentGrid" Grid.Row="1" Margin="16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="300"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-
+            
             <!-- Left Panel - Search and Filters -->
             <StackPanel Grid.Column="0" Margin="0,0,16,0">
                 <!-- Search Box -->
@@ -87,9 +93,17 @@
                 <!-- Clear Filters Button -->
                 <Button x:Name="ClearFiltersButton" 
                         Style="{DynamicResource MaterialDesignOutlinedButton}"
-                        Margin="0,0,0,16"
+                        Margin="0,0,0,8"
                         Click="ClearFiltersButton_Click">
                     Clear Filters
+                </Button>
+
+                <!-- Reload Sample Data Button -->
+                <Button x:Name="ReloadSampleDataButton" 
+                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                        Margin="0,0,0,8"
+                        Click="ReloadSampleDataButton_Click">
+                    Reload Sample Data
                 </Button>
 
                 <!-- Tags Filter -->
@@ -97,7 +111,7 @@
                            Style="{DynamicResource MaterialDesignSubtitle1TextBlock}"
                            Margin="0,0,0,8"/>
                 
-                                <ScrollViewer MaxHeight="200" 
+                <ScrollViewer MaxHeight="200" 
                                VerticalScrollBarVisibility="Auto">
                     <WrapPanel x:Name="TagsFilterPanel"/>
                 </ScrollViewer>
@@ -113,10 +127,16 @@
                 <!-- Snippets List -->
                 <ScrollViewer Grid.Row="0" 
                               VerticalScrollBarVisibility="Auto">
-                    <ItemsControl x:Name="SnippetsItemsControl">
-                        <ItemsControl.ItemTemplate>
+                    <ListView x:Name="SnippetsListView" 
+                              Grid.Row="1"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListView.ItemTemplate>
                             <DataTemplate>
-                                <materialDesign:Card Margin="0,0,0,16" Padding="16">
+                                <materialDesign:Card Margin="0,0,0,16" Padding="16" x:Name="SnippetCard"
+                                                    Background="{DynamicResource MaterialDesignPaper}"
+                                                    Foreground="{DynamicResource MaterialDesignBody}">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
@@ -135,20 +155,25 @@
                                             <StackPanel Grid.Column="0">
                                                 <TextBlock Text="{Binding Title}" 
                                                            Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
-                                                           Margin="0,0,0,4"/>
+                                                           Margin="0,0,0,4"
+                                                           x:Name="SnippetTitle"
+                                                           Foreground="{DynamicResource MaterialDesignBody}"/>
                                                 
                                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                                     <Border Background="{DynamicResource MaterialDesignSelection}"
-                                                            CornerRadius="12" Padding="8,4">
+                                                            CornerRadius="12" Padding="8,4"
+                                                            x:Name="LanguageTag">
                                                         <TextBlock Text="{Binding Language}" 
                                                                    Style="{DynamicResource MaterialDesignCaptionTextBlock}"
-                                                                   Foreground="{DynamicResource MaterialDesignSelectionForeground}"/>
+                                                                   Foreground="{DynamicResource MaterialDesignSelectionForeground}"
+                                                                   x:Name="LanguageText"/>
                                                     </Border>
                                                     
                                                     <TextBlock Text="{Binding CreatedAt, StringFormat='Created {0:MMM d, yyyy}'}" 
                                                                Style="{DynamicResource MaterialDesignCaptionTextBlock}"
                                                                Margin="16,0,0,0"
-                                                               Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                               x:Name="CreatedDateText"/>
                                                 </StackPanel>
                                             </StackPanel>
                                             
@@ -192,58 +217,62 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border Background="{DynamicResource MaterialDesignDivider}"
-                                                            CornerRadius="8" Padding="8,4" Margin="0,0,8,0">
+                                                            CornerRadius="8" Padding="8,4" Margin="0,0,8,0"
+                                                            x:Name="TagBorder">
                                                         <TextBlock Text="{Binding}" 
-                                                                   Style="{DynamicResource MaterialDesignCaptionTextBlock}"/>
+                                                                   Style="{DynamicResource MaterialDesignCaptionTextBlock}"
+                                                                   x:Name="TagText"
+                                                                   Foreground="{DynamicResource MaterialDesignBody}"/>
                                                     </Border>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
 
-                                        <!-- Code Preview -->
-                                        <Border Grid.Row="2" 
-                                                Background="{DynamicResource MaterialDesignBackground}"
-                                                BorderBrush="{DynamicResource MaterialDesignDivider}"
-                                                BorderThickness="1"
-                                                CornerRadius="4"
-                                                Padding="12">
-                                            <ScrollViewer MaxHeight="200" 
-                                                          VerticalScrollBarVisibility="Auto"
-                                                          HorizontalScrollBarVisibility="Auto">
-                                                <TextBlock Text="{Binding Code}" 
-                                                           FontFamily="Consolas"
-                                                           FontSize="12"
-                                                           TextWrapping="NoWrap"/>
-                                            </ScrollViewer>
-                                        </Border>
+                                        <!-- Code -->
+                                        <TextBox Grid.Row="2" 
+                                                 Text="{Binding Code}" 
+                                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                                 IsReadOnly="True"
+                                                 TextWrapping="Wrap"
+                                                 AcceptsReturn="True"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 MinHeight="100"
+                                                 x:Name="CodeTextBox"
+                                                 Background="{DynamicResource MaterialDesignPaper}"
+                                                 Foreground="{DynamicResource MaterialDesignBody}"
+                                                 BorderBrush="{DynamicResource MaterialDesignDivider}"/>
                                     </Grid>
                                 </materialDesign:Card>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </ListView.ItemTemplate>
+                    </ListView>
                 </ScrollViewer>
 
                 <!-- Empty State -->
-                <StackPanel Grid.Row="0" 
-                            x:Name="EmptyStatePanel"
-                            VerticalAlignment="Center"
+                <StackPanel x:Name="EmptyStatePanel" 
+                            Grid.Row="1" 
+                            Visibility="Collapsed"
                             HorizontalAlignment="Center"
-                            Visibility="Collapsed">
+                            VerticalAlignment="Center"
+                            Margin="32">
                     <materialDesign:PackIcon Kind="CodeBraces" 
-                                            Width="64" Height="64" 
+                                            Width="64" 
+                                            Height="64" 
                                             Foreground="{DynamicResource MaterialDesignBodyLight}"
                                             Margin="0,0,0,16"/>
-                    <TextBlock Text="No snippets yet" 
-                               Style="{DynamicResource MaterialDesignHeadline5TextBlock}"
-                               HorizontalAlignment="Center"
-                               Margin="0,0,0,8"/>
-                    <TextBlock Text="Create your first code snippet to get started!" 
+                    <TextBlock Text="No snippets found" 
+                               Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Create your first snippet to get started!" 
                                Style="{DynamicResource MaterialDesignBody1TextBlock}"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
                                HorizontalAlignment="Center"
-                               Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                               Margin="0,8,0,0"/>
                 </StackPanel>
             </Grid>
         </Grid>
+        
         <!-- Snackbar for notifications -->
         <materialDesign:Snackbar x:Name="MainSnackbar" 
                                  Grid.Row="1" 

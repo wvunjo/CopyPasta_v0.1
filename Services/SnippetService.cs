@@ -35,6 +35,14 @@ namespace CopyPastaNative.Services
             {
                 await LoadSnippetsAsync();
             }
+            
+            // Debug: Log what snippets we have
+            System.Diagnostics.Debug.WriteLine($"GetAllSnippetsAsync: Returning {_snippets.Count} snippets");
+            foreach (var snippet in _snippets)
+            {
+                System.Diagnostics.Debug.WriteLine($"  - {snippet.Title}: [{string.Join(", ", snippet.Tags ?? new List<string>())}]");
+            }
+            
             return _snippets.ToList();
         }
 
@@ -113,31 +121,153 @@ namespace CopyPastaNative.Services
 
         public List<string> GetAllTags()
         {
-            return _snippets
-                .SelectMany(s => s.Tags)
-                .Distinct()
-                .OrderBy(t => t)
-                .ToList();
+            try
+            {
+                // Safety check - return empty list if no snippets
+                if (_snippets == null || _snippets.Count == 0)
+                    return new List<string>();
+                    
+                return _snippets
+                    .Where(s => s.Tags != null) // Filter out snippets with null tags
+                    .SelectMany(s => s.Tags)
+                    .Where(tag => !string.IsNullOrEmpty(tag)) // Filter out null/empty tags
+                    .Distinct()
+                    .OrderBy(t => t)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                // Log error and return empty list instead of crashing
+                System.Diagnostics.Debug.WriteLine($"Error getting all tags: {ex.Message}");
+                return new List<string>();
+            }
+        }
+
+        public async Task ForceReloadSampleData()
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("ForceReloadSampleData: Deleting existing snippets.json");
+                
+                // Delete existing file to force recreation
+                if (File.Exists(_filePath))
+                {
+                    File.Delete(_filePath);
+                    System.Diagnostics.Debug.WriteLine("Deleted existing snippets.json");
+                }
+                
+                // Clear in-memory snippets
+                _snippets.Clear();
+                
+                // Reload with sample data
+                await LoadSnippetsAsync();
+                
+                System.Diagnostics.Debug.WriteLine($"ForceReloadSampleData: Loaded {_snippets.Count} sample snippets");
+                foreach (var snippet in _snippets)
+                {
+                    System.Diagnostics.Debug.WriteLine($"  - {snippet.Title}: [{string.Join(", ", snippet.Tags ?? new List<string>())}]");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in ForceReloadSampleData: {ex.Message}");
+            }
+        }
+
+        public async Task ForceDeleteAndReload()
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("ForceDeleteAndReload: Starting complete data reset");
+                
+                // Delete existing file
+                if (File.Exists(_filePath))
+                {
+                    File.Delete(_filePath);
+                    System.Diagnostics.Debug.WriteLine("Deleted existing snippets.json");
+                }
+                
+                // Clear in-memory snippets
+                _snippets.Clear();
+                
+                // Create fresh sample data
+                _snippets = CreateSampleSnippets();
+                
+                // Save to file
+                await SaveSnippetsAsync();
+                
+                System.Diagnostics.Debug.WriteLine($"ForceDeleteAndReload: Created {_snippets.Count} fresh sample snippets");
+                foreach (var snippet in _snippets)
+                {
+                    System.Diagnostics.Debug.WriteLine($"  - {snippet.Title}: [{string.Join(", ", snippet.Tags ?? new List<string>())}]");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in ForceDeleteAndReload: {ex.Message}");
+            }
+        }
+
+        public void ForceFreshSampleData()
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("ForceFreshSampleData: Forcing immediate use of fresh sample data");
+                
+                // Clear in-memory snippets
+                _snippets.Clear();
+                
+                // Create fresh sample data immediately
+                _snippets = CreateSampleSnippets();
+                
+                System.Diagnostics.Debug.WriteLine($"ForceFreshSampleData: Created {_snippets.Count} fresh sample snippets");
+                foreach (var snippet in _snippets)
+                {
+                    System.Diagnostics.Debug.WriteLine($"  - {snippet.Title}: [{string.Join(", ", snippet.Tags ?? new List<string>())}]");
+                }
+                
+                // Force save to file
+                _ = Task.Run(async () => await SaveSnippetsAsync());
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in ForceFreshSampleData: {ex.Message}");
+            }
         }
 
         private async Task LoadSnippetsAsync()
         {
             try
             {
+                System.Diagnostics.Debug.WriteLine($"LoadSnippetsAsync: Checking file at {_filePath}");
+                
                 if (File.Exists(_filePath))
                 {
+                    System.Diagnostics.Debug.WriteLine("LoadSnippetsAsync: Loading existing snippets.json");
                     var json = await File.ReadAllTextAsync(_filePath);
                     _snippets = JsonConvert.DeserializeObject<List<Snippet>>(json) ?? new List<Snippet>();
+                    System.Diagnostics.Debug.WriteLine($"LoadSnippetsAsync: Loaded {_snippets.Count} snippets from file");
                 }
                 else
                 {
+                    System.Diagnostics.Debug.WriteLine("LoadSnippetsAsync: File not found, creating sample snippets");
                     // Create sample snippets for first-time users
                     _snippets = CreateSampleSnippets();
                     await SaveSnippetsAsync();
+                    System.Diagnostics.Debug.WriteLine($"LoadSnippetsAsync: Created and saved {_snippets.Count} sample snippets");
+                }
+                
+                // Debug: Log all snippets
+                System.Diagnostics.Debug.WriteLine($"LoadSnippetsAsync: Final snippet count: {_snippets.Count}");
+                foreach (var snippet in _snippets)
+                {
+                    System.Diagnostics.Debug.WriteLine($"  - {snippet.Title}: [{string.Join(", ", snippet.Tags ?? new List<string>())}]");
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"LoadSnippetsAsync: Error occurred: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine("LoadSnippetsAsync: Falling back to sample snippets");
                 _snippets = CreateSampleSnippets();
             }
         }
@@ -176,6 +306,18 @@ namespace CopyPastaNative.Services
                     "css",
                     new List<string> { "css", "flexbox", "layout" },
                     ".container {\n  display: flex;\n  justify-content: center;\n  align-items: center;\n  min-height: 100vh;\n}\n\n.item {\n  /* Your content here */\n}"
+                ),
+                new Snippet(
+                    "PowerShell Get-Process",
+                    "powershell",
+                    new List<string> { "PS", "powershell", "process" },
+                    "# Get all running processes\nGet-Process | Where-Object {$_.CPU -gt 10} | Sort-Object CPU -Descending\n\n# Get specific process by name\nGet-Process -Name 'notepad' -ErrorAction SilentlyContinue\n\n# Get process with custom properties\nGet-Process | Select-Object Name, Id, CPU, WorkingSet | Format-Table -AutoSize"
+                ),
+                new Snippet(
+                    "Java Stream API Example",
+                    "java",
+                    new List<string> { "java", "stream", "collections" },
+                    "import java.util.List;\nimport java.util.stream.Collectors;\n\n// Filter and map using streams\nList<String> names = List.of(\"Alice\", \"Bob\", \"Charlie\", \"David\");\nList<String> filteredNames = names.stream()\n    .filter(name -> name.length() > 4)\n    .map(String::toUpperCase)\n    .collect(Collectors.toList());\n\nSystem.out.println(filteredNames); // [ALICE, CHARLIE, DAVID]"
                 )
             };
         }
