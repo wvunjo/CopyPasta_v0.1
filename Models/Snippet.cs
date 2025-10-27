@@ -14,6 +14,7 @@ namespace CopyPastaNative.Models
         private string _code = string.Empty;
         private DateTime _createdAt;
         private DateTime _updatedAt;
+        private bool _isFavorite;
 
         public string Id
         {
@@ -57,6 +58,12 @@ namespace CopyPastaNative.Models
             set => SetProperty(ref _updatedAt, value);
         }
 
+        public bool IsFavorite
+        {
+            get => _isFavorite;
+            set => SetProperty(ref _isFavorite, value);
+        }
+
         public Snippet()
         {
             Id = Guid.NewGuid().ToString();
@@ -64,13 +71,14 @@ namespace CopyPastaNative.Models
             UpdatedAt = DateTime.Now;
         }
 
-        public Snippet(string title, string language, List<string> tags, string code)
+        public Snippet(string title, string language, List<string> tags, string code, bool isFavorite = false)
         {
             Id = Guid.NewGuid().ToString();
             Title = title;
             Language = language;
             Tags = tags ?? new List<string>();
             Code = code;
+            IsFavorite = isFavorite;
             CreatedAt = DateTime.Now;
             UpdatedAt = DateTime.Now;
         }

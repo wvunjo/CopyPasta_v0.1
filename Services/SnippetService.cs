@@ -71,6 +71,7 @@ namespace CopyPastaNative.Services
                 existing.Language = snippet.Language;
                 existing.Tags = snippet.Tags;
                 existing.Code = snippet.Code;
+                existing.IsFavorite = snippet.IsFavorite;
                 existing.UpdatedAt = DateTime.Now;
                 await SaveSnippetsAsync();
             }
@@ -98,9 +99,9 @@ namespace CopyPastaNative.Services
 
             searchTerm = searchTerm.ToLowerInvariant();
             return _snippets.Where(s =>
-                s.Title.ToLowerInvariant().Contains(searchTerm) ||
-                s.Code.ToLowerInvariant().Contains(searchTerm) ||
-                s.Tags.Any(tag => tag.ToLowerInvariant().Contains(searchTerm))
+                s.Title?.ToLowerInvariant().Contains(searchTerm) == true ||
+                s.Code?.ToLowerInvariant().Contains(searchTerm) == true ||
+                s.Tags?.Any(tag => tag?.ToLowerInvariant().Contains(searchTerm) == true) == true
             ).ToList();
         }
 
@@ -115,7 +116,7 @@ namespace CopyPastaNative.Services
                 return _snippets.ToList();
 
             return _snippets.Where(s => 
-                tags.All(tag => s.Tags.Contains(tag))
+                s.Tags != null && tags.All(tag => s.Tags.Contains(tag))
             ).ToList();
         }
 
@@ -141,6 +142,120 @@ namespace CopyPastaNative.Services
                 System.Diagnostics.Debug.WriteLine($"Error getting all tags: {ex.Message}");
                 return new List<string>();
             }
+        }
+
+        public async Task<List<Snippet>> FindPotentialDuplicatesAsync(Snippet newSnippet)
+        {
+            if (_snippets.Count == 0)
+            {
+                await LoadSnippetsAsync();
+            }
+
+            if (newSnippet == null)
+                return new List<Snippet>();
+
+            var potentialDuplicates = new List<Snippet>();
+            
+            foreach (var existingSnippet in _snippets)
+            {
+                // Skip if it's the same snippet (when editing)
+                if (existingSnippet.Id == newSnippet.Id)
+                    continue;
+
+                double similarity = CalculateSimilarity(existingSnippet, newSnippet);
+                
+                // Consider it a potential duplicate if similarity is >= 70%
+                if (similarity >= 0.70)
+                {
+                    potentialDuplicates.Add(existingSnippet);
+                }
+            }
+
+            return potentialDuplicates.OrderByDescending(s => 
+                CalculateSimilarity(s, newSnippet)
+            ).ToList();
+        }
+
+        private double CalculateSimilarity(Snippet snippet1, Snippet snippet2)
+        {
+            double totalSimilarity = 0.0;
+            int checks = 0;
+
+            // Compare titles (40% weight)
+            if (!string.IsNullOrWhiteSpace(snippet1.Title) && !string.IsNullOrWhiteSpace(snippet2.Title))
+            {
+                double titleSimilarity = CalculateStringSimilarity(
+                    snippet1.Title.ToLowerInvariant(), 
+                    snippet2.Title.ToLowerInvariant()
+                );
+                totalSimilarity += titleSimilarity * 0.4;
+                checks++;
+            }
+
+            // Compare code content (60% weight)
+            if (!string.IsNullOrWhiteSpace(snippet1.Code) && !string.IsNullOrWhiteSpace(snippet2.Code))
+            {
+                double codeSimilarity = CalculateStringSimilarity(
+                    snippet1.Code.ToLowerInvariant(), 
+                    snippet2.Code.ToLowerInvariant()
+                );
+                totalSimilarity += codeSimilarity * 0.6;
+                checks++;
+            }
+
+            return checks > 0 ? totalSimilarity : 0.0;
+        }
+
+        private double CalculateStringSimilarity(string str1, string str2)
+        {
+            if (string.IsNullOrEmpty(str1) || string.IsNullOrEmpty(str2))
+                return 0.0;
+
+            if (str1.Equals(str2, StringComparison.OrdinalIgnoreCase))
+                return 1.0;
+
+            // Use Levenshtein distance for similarity calculation
+            int maxLength = Math.Max(str1.Length, str2.Length);
+            if (maxLength == 0)
+                return 1.0;
+
+            int distance = LevenshteinDistance(str1, str2);
+            double similarity = 1.0 - ((double)distance / maxLength);
+            
+            return Math.Max(0.0, similarity);
+        }
+
+        private int LevenshteinDistance(string str1, string str2)
+        {
+            int n = str1.Length;
+            int m = str2.Length;
+            int[,] d = new int[n + 1, m + 1];
+
+            if (n == 0)
+                return m;
+            if (m == 0)
+                return n;
+
+            for (int i = 0; i <= n; i++)
+                d[i, 0] = i;
+
+            for (int j = 0; j <= m; j++)
+                d[0, j] = j;
+
+            for (int i = 1; i <= n; i++)
+            {
+                for (int j = 1; j <= m; j++)
+                {
+                    int cost = (str2[j - 1] == str1[i - 1]) ? 0 : 1;
+
+                    d[i, j] = Math.Min(
+                        Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1),
+                        d[i - 1, j - 1] + cost
+                    );
+                }
+            }
+
+            return d[n, m];
         }
 
         public async Task ForceReloadSampleData()
