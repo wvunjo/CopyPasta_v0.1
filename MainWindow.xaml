@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:local="clr-namespace:CopyPastaNative.Converters"
+        xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
         Title="CopyPasta - Code Snippet Manager" 
         Height="800" Width="1200"
         WindowStartupLocation="CenterScreen"
@@ -12,7 +13,8 @@
         TextElement.FontSize="13"
         TextOptions.TextFormattingMode="Ideal"
         TextOptions.TextRenderingMode="Auto"
-        FontFamily="{DynamicResource MaterialDesignFont}">
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        KeyDown="MainWindow_KeyDown">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -25,6 +27,27 @@
             
             <!-- Local Converters -->
             <local:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
+            
+            <!-- Style for Favorite Icon -->
+            <Style x:Key="FavoriteIconStyle" TargetType="materialDesign:PackIcon">
+                <Setter Property="Kind" Value="StarOutline"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsFavorite}" Value="True">
+                        <Setter Property="Kind" Value="Star"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+            
+            <!-- Custom ScrollBar Style for Dark Theme Visibility -->
+            <Style x:Key="CustomScrollBarStyle" TargetType="ScrollBar">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Width" Value="12"/>
+                <Style.Resources>
+                    <SolidColorBrush x:Key="ScrollBar.StaticThumb" Color="#FF999999"/>
+                    <SolidColorBrush x:Key="ScrollBar.MouseOverThumb" Color="#FFAAAAAA"/>
+                    <SolidColorBrush x:Key="ScrollBar.PressedThumb" Color="#FFBBBBBB"/>
+                </Style.Resources>
+            </Style>
         </ResourceDictionary>
     </Window.Resources>
 
@@ -82,13 +105,56 @@
             </Grid.ColumnDefinitions>
             
             <!-- Left Panel - Search and Filters -->
-            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+            <StackPanel x:Name="LeftPanel" Grid.Column="0" Margin="0,0,16,0">
                 <!-- Search Box -->
                 <TextBox x:Name="SearchBox" 
                          Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                         Margin="0,0,0,16"
+                         Margin="0,0,0,8"
                          materialDesign:HintAssist.Hint="Search snippets..."
                          TextChanged="SearchBox_TextChanged"/>
+
+                <!-- Search History Panel -->
+                <materialDesign:Card x:Name="SearchHistoryPanel"
+                                     Visibility="Collapsed"
+                                     Margin="0,0,0,8"
+                                     Padding="8">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Recent Searches" 
+                                       FontWeight="Bold" 
+                                       FontSize="12"
+                                       VerticalAlignment="Center"/>
+                            <Button x:Name="ClearHistoryButton"
+                                    Grid.Column="1"
+                                    Content="Clear"
+                                    Style="{DynamicResource MaterialDesignFlatButton}"
+                                    Padding="4,2"
+                                    Click="ClearHistoryButton_Click"/>
+                        </Grid>
+                        <ListBox x:Name="SearchHistoryListBox"
+                                 MaxHeight="200"
+                                 SelectionChanged="SearchHistoryListBox_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="ClockOutline" 
+                                                                 Width="16" 
+                                                                 Height="16" 
+                                                                 Margin="0,0,8,0"
+                                                                 VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding}" 
+                                                   TextWrapping="Wrap"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </materialDesign:Card>
 
                 <!-- Clear Filters Button -->
                 <Button x:Name="ClearFiltersButton" 
@@ -105,6 +171,133 @@
                         Click="ReloadSampleDataButton_Click">
                     Reload Sample Data
                 </Button>
+
+                <!-- Export Button -->
+                <Button x:Name="ExportButton" 
+                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                        Margin="0,0,0,8"
+                        Click="ExportButton_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Download" Width="16" Height="16" Margin="0,0,8,0"/>
+                        <TextBlock Text="Export Snippets"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- Import Button -->
+                <Button x:Name="ImportButton" 
+                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                        Margin="0,0,0,8"
+                        Click="ImportButton_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Upload" Width="16" Height="16" Margin="0,0,8,0"/>
+                        <TextBlock Text="Import Snippets"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- Show Favorites Only Checkbox -->
+                <CheckBox x:Name="ShowFavoritesOnlyCheckBox"
+                          Content="Show Favorites Only"
+                          Margin="0,0,0,8"
+                          Checked="ShowFavoritesOnly_Changed"
+                          Unchecked="ShowFavoritesOnly_Changed"
+                          Style="{DynamicResource MaterialDesignCheckBox}"/>
+
+                <!-- Multi-Select Mode Checkbox -->
+                <CheckBox x:Name="MultiSelectModeCheckBox"
+                          Content="Multi-Select Mode"
+                          Margin="0,0,0,8"
+                          Checked="MultiSelectMode_Changed"
+                          Unchecked="MultiSelectMode_Changed"
+                          Style="{DynamicResource MaterialDesignCheckBox}"/>
+
+                <!-- Bulk Actions (shown when multi-select is enabled) -->
+                <StackPanel x:Name="BulkActionsPanel" 
+                            Visibility="Collapsed" 
+                            Margin="0,0,0,8">
+                    <Button x:Name="SelectAllButton"
+                            Content="Select All"
+                            Style="{DynamicResource MaterialDesignOutlinedButton}"
+                            Click="SelectAllButton_Click"
+                            Margin="0,0,0,4"/>
+                    <Button x:Name="DeselectAllButton"
+                            Content="Deselect All"
+                            Style="{DynamicResource MaterialDesignOutlinedButton}"
+                            Click="DeselectAllButton_Click"
+                            Margin="0,0,0,4"/>
+                    <Button x:Name="DeleteSelectedButton"
+                            Content="Delete Selected"
+                            Style="{DynamicResource MaterialDesignOutlinedButton}"
+                            Background="Red"
+                            Foreground="White"
+                            Click="DeleteSelectedButton_Click"
+                            Margin="0,0,0,4"/>
+                    <TextBlock x:Name="SelectedCountText"
+                              HorizontalAlignment="Center"
+                              FontWeight="SemiBold"
+                              Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <!-- Statistics Panel -->
+                <Border x:Name="StatisticsPanel"
+                        Background="{DynamicResource MaterialDesignPaper}"
+                        BorderBrush="{DynamicResource MaterialDesignDivider}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="12"
+                        Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="Statistics" 
+                                   x:Name="StatisticsHeader"
+                                   Style="{DynamicResource MaterialDesignSubtitle2TextBlock}"
+                                   FontWeight="Bold"
+                                   Margin="0,0,0,8"/>
+                        
+                        <!-- Total Snippets -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <materialDesign:PackIcon Kind="CodeBraces" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock VerticalAlignment="Center">
+                                <Run Text="Total: " FontWeight="SemiBold"/>
+                                <Run x:Name="StatsTotalSnippets" Text="0"/>
+                            </TextBlock>
+                        </StackPanel>
+                        
+                        <!-- Favorite Snippets -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <materialDesign:PackIcon Kind="Star" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock VerticalAlignment="Center">
+                                <Run Text="Favorites: " FontWeight="SemiBold"/>
+                                <Run x:Name="StatsFavoriteSnippets" Text="0"/>
+                            </TextBlock>
+                        </StackPanel>
+                        
+                        <!-- Languages -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <materialDesign:PackIcon Kind="LanguageC" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock VerticalAlignment="Center">
+                                <Run Text="Languages: " FontWeight="SemiBold"/>
+                                <Run x:Name="StatsLanguages" Text="0"/>
+                            </TextBlock>
+                        </StackPanel>
+                        
+                        <!-- Total Tags -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <materialDesign:PackIcon Kind="Tag" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock VerticalAlignment="Center">
+                                <Run Text="Tags: " FontWeight="SemiBold"/>
+                                <Run x:Name="StatsTotalTags" Text="0"/>
+                            </TextBlock>
+                        </StackPanel>
+                        
+                        <!-- Most Popular Tag -->
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <materialDesign:PackIcon Kind="TrendingUp" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock TextWrapping="Wrap" VerticalAlignment="Center">
+                                <Run Text="Top Tag: " FontWeight="SemiBold"/>
+                                <Run x:Name="StatsTopTag" Text="None"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
 
                 <!-- Tags Filter -->
                 <TextBlock Text="Filter by Tags:" 
@@ -125,18 +318,44 @@
                 </Grid.RowDefinitions>
 
                 <!-- Snippets List -->
-                <ScrollViewer Grid.Row="0" 
-                              VerticalScrollBarVisibility="Auto">
-                    <ListView x:Name="SnippetsListView" 
-                              Grid.Row="1"
-                              Background="Transparent"
-                              BorderThickness="0"
-                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListView x:Name="SnippetsListView" 
+                          Grid.Row="0"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          ScrollViewer.CanContentScroll="False"
+                          SelectionMode="Extended"
+                          SelectionChanged="SnippetsListView_SelectionChanged"
+                          PreviewMouseWheel="SnippetsListView_PreviewMouseWheel">
+                    <ListView.Style>
+                        <Style TargetType="ListView">
+                            <Style.Resources>
+                                <Style TargetType="ScrollBar" BasedOn="{StaticResource CustomScrollBarStyle}"/>
+                            </Style.Resources>
+                        </Style>
+                    </ListView.Style>
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Margin" Value="4"/>
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#40FFD700"/>
+                                        <Setter Property="BorderBrush" Value="#FFD700"/>
+                                        <Setter Property="BorderThickness" Value="2"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <materialDesign:Card Margin="0,0,0,16" Padding="16" x:Name="SnippetCard"
                                                     Background="{DynamicResource MaterialDesignPaper}"
-                                                    Foreground="{DynamicResource MaterialDesignBody}">
+                                                    Foreground="{DynamicResource MaterialDesignBody}"
+                                                    MouseDown="SnippetCard_MouseDown"
+                                                    Cursor="Hand">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
@@ -178,6 +397,17 @@
                                             </StackPanel>
                                             
                                             <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                <Button Style="{DynamicResource MaterialDesignIconButton}"
+                                                        ToolTip="Toggle Favorite"
+                                                        Name="FavoriteButton"
+                                                        Click="FavoriteButton_Click"
+                                                        Tag="{Binding}"
+                                                        DataContext="{Binding}">
+                                                    <materialDesign:PackIcon x:Name="FavoriteIcon" 
+                                                                           Style="{StaticResource FavoriteIconStyle}"
+                                                                           Width="20" Height="20"/>
+                                                </Button>
+                                                
                                                 <Button Style="{DynamicResource MaterialDesignIconButton}"
                                                         ToolTip="Copy Code"
                                                         Name="CopyButton"
@@ -229,24 +459,36 @@
                                         </ItemsControl>
 
                                         <!-- Code -->
-                                        <TextBox Grid.Row="2" 
-                                                 Text="{Binding Code}" 
-                                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                        <Border Grid.Row="2"
+                                                BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="8"
+                                                MinHeight="100">
+                                            <avalonEdit:TextEditor 
+                                                 x:Name="CodeEditor"
+                                                 Loaded="CodeEditor_Loaded"
                                                  IsReadOnly="True"
-                                                 TextWrapping="Wrap"
-                                                 AcceptsReturn="True"
+                                                 FontFamily="Consolas"
+                                                 FontSize="12"
+                                                 ShowLineNumbers="False"
+                                                 WordWrap="True"
+                                                 HorizontalScrollBarVisibility="Auto"
                                                  VerticalScrollBarVisibility="Auto"
-                                                 MinHeight="100"
-                                                 x:Name="CodeTextBox"
-                                                 Background="{DynamicResource MaterialDesignPaper}"
-                                                 Foreground="{DynamicResource MaterialDesignBody}"
-                                                 BorderBrush="{DynamicResource MaterialDesignDivider}"/>
+                                                 DataContext="{Binding}">
+                                                <avalonEdit:TextEditor.Background>
+                                                    <SolidColorBrush x:Name="CodeEditorBackground" Color="White"/>
+                                                </avalonEdit:TextEditor.Background>
+                                                <avalonEdit:TextEditor.Foreground>
+                                                    <SolidColorBrush x:Name="CodeEditorForeground" Color="Black"/>
+                                                </avalonEdit:TextEditor.Foreground>
+                                            </avalonEdit:TextEditor>
+                                        </Border>
                                     </Grid>
                                 </materialDesign:Card>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
-                </ScrollViewer>
 
                 <!-- Empty State -->
                 <StackPanel x:Name="EmptyStatePanel" 
