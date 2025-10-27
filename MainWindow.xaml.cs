@@ -5,16 +5,10 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Input;
 using CopyPastaNative.Models;
 using CopyPastaNative.Services;
 using MaterialDesignThemes.Wpf;
 using System.ComponentModel;
-using ICSharpCode.AvalonEdit;
-using ICSharpCode.AvalonEdit.Highlighting;
-using Microsoft.Win32;
-using Newtonsoft.Json;
-using System.IO;
 
 namespace CopyPastaNative
 {
@@ -26,9 +20,6 @@ namespace CopyPastaNative
         private List<Snippet> _filteredSnippets = new();
         private List<string> _selectedTags = new();
         private bool _isDarkTheme = false;
-        private bool _showFavoritesOnly = false;
-        private bool _isMultiSelectMode = false;
-        private List<string> _searchHistory = new(); // Stores up to 10 recent searches
 
         public MainWindow()
         {
@@ -58,187 +49,6 @@ namespace CopyPastaNative
             }
         }
 
-        private void MainWindow_KeyDown(object sender, KeyEventArgs e)
-        {
-            try
-            {
-                // Only handle keyboard shortcuts when not typing in a text box
-                if (e.OriginalSource is TextBox || e.OriginalSource is ICSharpCode.AvalonEdit.TextEditor)
-                {
-                    return;
-                }
-
-                var key = e.Key;
-                var modifiers = Keyboard.Modifiers;
-
-                // Ctrl+F - Focus search box
-                if (key == Key.F && modifiers == ModifierKeys.Control)
-                {
-                    SearchBox?.Focus();
-                    SearchBox?.SelectAll();
-                    e.Handled = true;
-                    System.Diagnostics.Debug.WriteLine("Keyboard shortcut: Ctrl+F - Focused search box");
-                    return;
-                }
-
-                // Ctrl+N - New snippet
-                if (key == Key.N && modifiers == ModifierKeys.Control)
-                {
-                    NewSnippetButton_Click(this, new RoutedEventArgs());
-                    e.Handled = true;
-                    System.Diagnostics.Debug.WriteLine("Keyboard shortcut: Ctrl+N - New snippet");
-                    return;
-                }
-
-                // Escape - Clear filters
-                if (key == Key.Escape && modifiers == ModifierKeys.None)
-                {
-                    ClearFiltersButton_Click(this, new RoutedEventArgs());
-                    e.Handled = true;
-                    System.Diagnostics.Debug.WriteLine("Keyboard shortcut: Escape - Cleared filters");
-                    return;
-                }
-
-                // Delete - Delete selected snippet
-                if (key == Key.Delete && modifiers == ModifierKeys.None)
-                {
-                    if (SnippetsListView?.SelectedItem is Snippet selectedSnippet)
-                    {
-                        var result = MessageBox.Show(
-                            $"Are you sure you want to delete '{selectedSnippet.Title}'?",
-                            "Confirm Delete",
-                            MessageBoxButton.YesNo,
-                            MessageBoxImage.Question);
-
-                        if (result == MessageBoxResult.Yes)
-                        {
-                            _ = Task.Run(async () =>
-                            {
-                                await _snippetService.DeleteSnippetAsync(selectedSnippet.Id);
-                                await Dispatcher.InvokeAsync(async () =>
-                                {
-                                    await LoadSnippetsAsync();
-                                    UpdateTagsFilter();
-                                    ApplyNewFilteringSystem();
-                                    
-                                    if (_isDarkTheme)
-                                    {
-                                        UpdateSnippetElementsTheme(true);
-                                    }
-                                });
-                            });
-                            e.Handled = true;
-                            System.Diagnostics.Debug.WriteLine($"Keyboard shortcut: Delete - Deleting snippet '{selectedSnippet.Title}'");
-                        }
-                    }
-                    return;
-                }
-
-                // Ctrl+A - Select all (when in multi-select mode)
-                if (key == Key.A && modifiers == ModifierKeys.Control)
-                {
-                    if (_isMultiSelectMode && SnippetsListView != null)
-                    {
-                        SnippetsListView.SelectAll();
-                        UpdateSelectedCount();
-                        e.Handled = true;
-                        System.Diagnostics.Debug.WriteLine("Keyboard shortcut: Ctrl+A - Selected all items");
-                    }
-                    return;
-                }
-
-                // Ctrl+D - Deselect all (when in multi-select mode)
-                if (key == Key.D && modifiers == ModifierKeys.Control)
-                {
-                    if (_isMultiSelectMode && SnippetsListView != null)
-                    {
-                        SnippetsListView.SelectedItems.Clear();
-                        UpdateSelectedCount();
-                        e.Handled = true;
-                        System.Diagnostics.Debug.WriteLine("Keyboard shortcut: Ctrl+D - Deselected all items");
-                    }
-                    return;
-                }
-
-                // Ctrl+C - Copy code from selected snippet
-                if (key == Key.C && modifiers == ModifierKeys.Control)
-                {
-                    if (SnippetsListView?.SelectedItem is Snippet selectedSnippet)
-                    {
-                        try
-                        {
-                            Clipboard.SetText(selectedSnippet.Code);
-                            System.Diagnostics.Debug.WriteLine($"Keyboard shortcut: Ctrl+C - Copied code from '{selectedSnippet.Title}'");
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Error copying code via keyboard shortcut: {ex.Message}");
-                        }
-                        e.Handled = true;
-                    }
-                    return;
-                }
-
-                // Enter - Copy and select next item
-                if (key == Key.Enter && modifiers == ModifierKeys.None)
-                {
-                    if (SnippetsListView?.SelectedItem is Snippet selectedSnippet)
-                    {
-                        try
-                        {
-                            Clipboard.SetText(selectedSnippet.Code);
-                            System.Diagnostics.Debug.WriteLine($"Keyboard shortcut: Enter - Copied code from '{selectedSnippet.Title}'");
-                            
-                            // Move to next item or first item if at the end
-                            var index = SnippetsListView.SelectedIndex;
-                            var maxIndex = SnippetsListView.Items.Count - 1;
-                            if (index < maxIndex)
-                            {
-                                SnippetsListView.SelectedIndex = index + 1;
-                                SnippetsListView.ScrollIntoView(SnippetsListView.SelectedItem);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Error copying code via Enter key: {ex.Message}");
-                        }
-                        e.Handled = true;
-                    }
-                    return;
-                }
-
-                // Up/Down arrows - Navigate snippets
-                if ((key == Key.Up || key == Key.Down) && modifiers == ModifierKeys.None)
-                {
-                    var currentIndex = SnippetsListView?.SelectedIndex ?? 0;
-                    var itemCount = SnippetsListView?.Items.Count ?? 0;
-                    
-                    if (itemCount > 0)
-                    {
-                        int newIndex;
-                        if (key == Key.Up)
-                        {
-                            newIndex = currentIndex > 0 ? currentIndex - 1 : itemCount - 1;
-                        }
-                        else // Key.Down
-                        {
-                            newIndex = currentIndex < itemCount - 1 ? currentIndex + 1 : 0;
-                        }
-                        
-                        SnippetsListView.SelectedIndex = newIndex;
-                        SnippetsListView.ScrollIntoView(SnippetsListView.SelectedItem);
-                        e.Handled = true;
-                        System.Diagnostics.Debug.WriteLine($"Keyboard shortcut: {key} - Navigated to index {newIndex}");
-                    }
-                    return;
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error handling keyboard shortcut: {ex.Message}");
-            }
-        }
-
         private async Task LoadSnippetsAsync()
         {
             try
@@ -251,146 +61,10 @@ namespace CopyPastaNative
                 {
                     System.Diagnostics.Debug.WriteLine($"  - {snippet.Title}: [{string.Join(", ", snippet.Tags ?? new List<string>())}]");
                 }
-                
-                // Update statistics after loading
-                UpdateStatistics();
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error loading snippets: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        private void UpdateStatistics()
-        {
-            try
-            {
-                if (_allSnippets == null || _allSnippets.Count == 0)
-                {
-                    StatsTotalSnippets.Text = "0";
-                    StatsFavoriteSnippets.Text = "0";
-                    StatsLanguages.Text = "0";
-                    StatsTotalTags.Text = "0";
-                    StatsTopTag.Text = "None";
-                    return;
-                }
-
-                // Total snippets
-                StatsTotalSnippets.Text = _allSnippets.Count.ToString();
-
-                // Favorite snippets
-                var favoriteCount = _allSnippets.Count(s => s.IsFavorite);
-                StatsFavoriteSnippets.Text = favoriteCount.ToString();
-
-                // Unique languages
-                var languages = _allSnippets
-                    .Where(s => !string.IsNullOrWhiteSpace(s.Language))
-                    .Select(s => s.Language)
-                    .Distinct()
-                    .ToList();
-                StatsLanguages.Text = languages.Count.ToString();
-
-                // Total tags count
-                var allTags = _allSnippets
-                    .Where(s => s.Tags != null)
-                    .SelectMany(s => s.Tags)
-                    .Where(tag => !string.IsNullOrWhiteSpace(tag))
-                    .ToList();
-                StatsTotalTags.Text = allTags.Distinct().Count().ToString();
-
-                // Most popular tag
-                var mostPopularTag = allTags
-                    .GroupBy(tag => tag)
-                    .OrderByDescending(g => g.Count())
-                    .FirstOrDefault();
-
-                if (mostPopularTag != null)
-                {
-                    StatsTopTag.Text = mostPopularTag.Key;
-                }
-                else
-                {
-                    StatsTopTag.Text = "None";
-                }
-
-                System.Diagnostics.Debug.WriteLine($"Statistics updated: {_allSnippets.Count} total, {favoriteCount} favorites, {languages.Count} languages");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error updating statistics: {ex.Message}");
-            }
-        }
-
-        private void UpdateStatisticsPanelTheme(bool isDark)
-        {
-            try
-            {
-                // Update Statistics panel border
-                if (StatisticsPanel != null)
-                {
-                    StatisticsPanel.Background = isDark ? new SolidColorBrush(Color.FromRgb(64, 64, 64)) : new SolidColorBrush(Colors.White);
-                    StatisticsPanel.BorderBrush = isDark ? new SolidColorBrush(Color.FromRgb(80, 80, 80)) : new SolidColorBrush(Color.FromRgb(224, 224, 224));
-                }
-                
-                // Update Statistics header
-                if (StatisticsHeader != null)
-                {
-                    StatisticsHeader.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                }
-                
-                // Update all TextBlocks in the statistics panel (including Runs)
-                UpdateStatisticsTextBlocks(isDark);
-                
-                // Update all PackIcons in the statistics panel
-                UpdateStatisticsIcons(isDark);
-                
-                System.Diagnostics.Debug.WriteLine($"Statistics panel theme updated to {(isDark ? "dark" : "light")}");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error updating statistics panel theme: {ex.Message}");
-            }
-        }
-
-        private void UpdateStatisticsTextBlocks(bool isDark)
-        {
-            try
-            {
-                // Update all TextBlocks within the Statistics panel
-                var statisticsPanel = this.FindName("StatisticsPanel") as Border;
-                if (statisticsPanel != null)
-                {
-                    var textBlocks = FindVisualChildren<TextBlock>(statisticsPanel);
-                    foreach (var textBlock in textBlocks)
-                    {
-                        textBlock.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error updating statistics text blocks: {ex.Message}");
-            }
-        }
-
-        private void UpdateStatisticsIcons(bool isDark)
-        {
-            try
-            {
-                // Update all PackIcons within the Statistics panel
-                var statisticsPanel = this.FindName("StatisticsPanel") as Border;
-                if (statisticsPanel != null)
-                {
-                    var icons = FindVisualChildren<MaterialDesignThemes.Wpf.PackIcon>(statisticsPanel);
-                    foreach (var icon in icons)
-                    {
-                        icon.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error updating statistics icons: {ex.Message}");
             }
         }
 
@@ -683,27 +357,6 @@ namespace CopyPastaNative
         {
             await Task.Delay(300); // Debounce search
             ApplyNewFilteringSystem();
-            
-            // Add search to history
-            if (SearchBox != null && !string.IsNullOrWhiteSpace(SearchBox.Text))
-            {
-                string searchText = SearchBox.Text.Trim();
-                
-                // Remove if already exists (to avoid duplicates)
-                _searchHistory.Remove(searchText);
-                
-                // Add to the beginning
-                _searchHistory.Insert(0, searchText);
-                
-                // Keep only last 10 searches
-                if (_searchHistory.Count > 10)
-                {
-                    _searchHistory.RemoveAt(_searchHistory.Count - 1);
-                }
-                
-                // Update the search history UI
-                UpdateSearchHistoryUI();
-            }
         }
 
         private void TagFilterButton_Click(object sender, RoutedEventArgs e)
@@ -769,8 +422,6 @@ namespace CopyPastaNative
             {
                 System.Diagnostics.Debug.WriteLine($"=== APPLYING NEW FILTERING SYSTEM ===");
                 System.Diagnostics.Debug.WriteLine($"Current selected tags: [{string.Join(", ", _selectedTags)}]");
-                System.Diagnostics.Debug.WriteLine($"Search text: '{SearchBox?.Text ?? ""}'");
-                System.Diagnostics.Debug.WriteLine($"Show favorites only: {_showFavoritesOnly}");
                 System.Diagnostics.Debug.WriteLine($"Total snippets available: {_allSnippets?.Count ?? 0}");
                 
                 if (_allSnippets == null || _allSnippets.Count == 0)
@@ -779,43 +430,32 @@ namespace CopyPastaNative
                     return;
                 }
                 
-                // Start with all snippets
-                var visibleSnippets = _allSnippets.ToList();
-                
-                // Apply search filter first
-                if (!string.IsNullOrWhiteSpace(SearchBox?.Text))
+                // Log all available snippets and their tags
+                System.Diagnostics.Debug.WriteLine("All available snippets:");
+                foreach (var snippet in _allSnippets)
                 {
-                    var searchTerm = SearchBox.Text.ToLowerInvariant();
-                    System.Diagnostics.Debug.WriteLine($"Applying search filter for term: '{searchTerm}'");
-                    
-                    var beforeSearch = visibleSnippets.Count;
-                    visibleSnippets = visibleSnippets.Where(snippet =>
-                    {
-                        bool matchesTitle = snippet.Title?.ToLowerInvariant().Contains(searchTerm) == true;
-                        bool matchesCode = snippet.Code?.ToLowerInvariant().Contains(searchTerm) == true;
-                        bool matchesTags = snippet.Tags?.Any(tag => tag?.ToLowerInvariant().Contains(searchTerm) == true) == true;
-                        
-                        bool matches = matchesTitle || matchesCode || matchesTags;
-                        System.Diagnostics.Debug.WriteLine($"  Snippet '{snippet.Title}' - matchesTitle: {matchesTitle}, matchesCode: {matchesCode}, matchesTags: {matchesTags} -> {matches}");
-                        
-                        return matches;
-                    }).ToList();
-                    
-                    System.Diagnostics.Debug.WriteLine($"Search filter: {beforeSearch} -> {visibleSnippets.Count} snippets");
+                    System.Diagnostics.Debug.WriteLine($"  - {snippet.Title}: Tags=[{string.Join(", ", snippet.Tags ?? new List<string>())}]");
                 }
                 
-                // Apply tag filter
-                if (_selectedTags != null && _selectedTags.Count > 0)
+                // BRAND NEW FILTERING LOGIC: Show snippets that have ANY of the selected tags
+                List<Snippet> visibleSnippets;
+                
+                if (_selectedTags.Count == 0)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Applying tag filter with {_selectedTags.Count} selected tags: {string.Join(", ", _selectedTags)}");
+                    // No tags selected = show all snippets
+                    visibleSnippets = _allSnippets.ToList();
+                    System.Diagnostics.Debug.WriteLine("No tags selected - showing ALL snippets");
+                }
+                else
+                {
+                    // Tags selected = show only snippets with matching tags
+                    System.Diagnostics.Debug.WriteLine($"Filtering snippets for tags: [{string.Join(", ", _selectedTags)}]");
                     
-                    var beforeTagFilter = visibleSnippets.Count;
-                    
-                    // Show snippets that have ANY of the selected tags
-                    visibleSnippets = visibleSnippets.Where(snippet => 
+                    visibleSnippets = _allSnippets.Where(snippet => 
                     {
                         if (snippet?.Tags == null)
                         {
+                            System.Diagnostics.Debug.WriteLine($"  Skipping snippet '{snippet?.Title}' - no tags");
                             return false;
                         }
                         
@@ -825,39 +465,14 @@ namespace CopyPastaNative
                         return hasMatchingTag;
                     }).ToList();
                     
-                    System.Diagnostics.Debug.WriteLine($"Tag filter: {beforeTagFilter} -> {visibleSnippets.Count} snippets");
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine("No tags selected - showing all snippets after search filter");
-                }
-
-                // Apply favorites filter
-                if (_showFavoritesOnly)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Applying favorites filter");
-                    
-                    var beforeFavoritesFilter = visibleSnippets.Count;
-                    visibleSnippets = visibleSnippets.Where(snippet => snippet.IsFavorite).ToList();
-                    
-                    System.Diagnostics.Debug.WriteLine($"Favorites filter: {beforeFavoritesFilter} -> {visibleSnippets.Count} snippets");
-                }
-                
-                // Log which snippets remain after filtering
-                if (visibleSnippets.Count > 0)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Remaining snippets after all filters:");
+                    System.Diagnostics.Debug.WriteLine($"Tags selected - showing {visibleSnippets.Count} matching snippets:");
                     foreach (var snippet in visibleSnippets)
                     {
                         System.Diagnostics.Debug.WriteLine($"  ✓ {snippet.Title} (Tags: [{string.Join(", ", snippet.Tags)}])");
                     }
                 }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine("NO SNIPPETS REMAIN AFTER FILTERING!");
-                }
                 
-                // Update UI: Direct and immediate
+                // BRAND NEW UI UPDATE: Direct and immediate
                 System.Diagnostics.Debug.WriteLine($"Updating ListView to show {visibleSnippets.Count} snippets");
                 System.Diagnostics.Debug.WriteLine($"ListView.Items.Count before update: {SnippetsListView?.Items?.Count ?? 0}");
                 
@@ -908,223 +523,6 @@ namespace CopyPastaNative
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error in ClearFiltersButton_Click: {ex.Message}");
-            }
-        }
-
-        private void UpdateSearchHistoryUI()
-        {
-            try
-            {
-                if (SearchHistoryListBox != null && SearchHistoryPanel != null)
-                {
-                    // Update listbox items
-                    SearchHistoryListBox.ItemsSource = null;
-                    SearchHistoryListBox.ItemsSource = _searchHistory;
-                    
-                    // Show/hide panel based on history count
-                    if (_searchHistory.Count > 0)
-                    {
-                        SearchHistoryPanel.Visibility = Visibility.Visible;
-                    }
-                    else
-                    {
-                        SearchHistoryPanel.Visibility = Visibility.Collapsed;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in UpdateSearchHistoryUI: {ex.Message}");
-            }
-        }
-
-        private void SearchHistoryListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            try
-            {
-                if (SearchHistoryListBox?.SelectedItem is string selectedSearch)
-                {
-                    // Set the search text
-                    if (SearchBox != null)
-                    {
-                        SearchBox.Text = selectedSearch;
-                        SearchBox.Focus();
-                        
-                        // Trigger search immediately
-                        ApplyNewFilteringSystem();
-                        
-                        System.Diagnostics.Debug.WriteLine($"Selected search from history: '{selectedSearch}'");
-                    }
-                    
-                    // Clear selection
-                    SearchHistoryListBox.SelectedItem = null;
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in SearchHistoryListBox_SelectionChanged: {ex.Message}");
-            }
-        }
-
-        private void ClearHistoryButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                _searchHistory.Clear();
-                UpdateSearchHistoryUI();
-                System.Diagnostics.Debug.WriteLine("Search history cleared");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in ClearHistoryButton_Click: {ex.Message}");
-            }
-        }
-
-        private async void ExportButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                // Show save file dialog
-                var saveDialog = new SaveFileDialog
-                {
-                    Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
-                    DefaultExt = "json",
-                    FileName = $"CopyPasta_Export_{DateTime.Now:yyyyMMdd_HHmmss}.json"
-                };
-
-                if (saveDialog.ShowDialog() == true)
-                {
-                    // Get all snippets
-                    var allSnippets = await _snippetService.GetAllSnippetsAsync();
-                    
-                    // Serialize to JSON
-                    var json = JsonConvert.SerializeObject(allSnippets, Formatting.Indented);
-                    
-                    // Save to file
-                    await File.WriteAllTextAsync(saveDialog.FileName, json);
-                    
-                    // Show success message
-                    MessageBox.Show(
-                        $"Successfully exported {allSnippets.Count} snippet(s) to:\n{saveDialog.FileName}",
-                        "Export Successful",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information
-                    );
-                    
-                    System.Diagnostics.Debug.WriteLine($"Exported {allSnippets.Count} snippets to {saveDialog.FileName}");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error exporting snippets: {ex.Message}");
-                MessageBox.Show(
-                    $"Failed to export snippets:\n{ex.Message}",
-                    "Export Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error
-                );
-            }
-        }
-
-        private async void ImportButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                // Show open file dialog
-                var openDialog = new OpenFileDialog
-                {
-                    Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
-                    DefaultExt = "json"
-                };
-
-                if (openDialog.ShowDialog() == true)
-                {
-                    // Read the JSON file
-                    var json = await File.ReadAllTextAsync(openDialog.FileName);
-                    
-                    // Deserialize to list of snippets
-                    var importedSnippets = JsonConvert.DeserializeObject<List<Snippet>>(json);
-                    
-                    if (importedSnippets == null || importedSnippets.Count == 0)
-                    {
-                        MessageBox.Show(
-                            "No snippets found in the selected file.",
-                            "Import Error",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Warning
-                        );
-                        return;
-                    }
-
-                    // Ask user how to import
-                    var result = MessageBox.Show(
-                        $"Found {importedSnippets.Count} snippet(s) in the file.\n\n" +
-                        "How would you like to import them?\n\n" +
-                        "Yes - Replace all existing snippets\n" +
-                        "No - Add to existing snippets\n" +
-                        "Cancel - Don't import",
-                        "Import Snippets",
-                        MessageBoxButton.YesNoCancel,
-                        MessageBoxImage.Question
-                    );
-
-                    if (result == MessageBoxResult.Cancel)
-                        return;
-
-                    if (result == MessageBoxResult.Yes)
-                    {
-                        // Replace mode: Delete all existing, then add imported
-                        foreach (var existingSnippet in _allSnippets)
-                        {
-                            await _snippetService.DeleteSnippetAsync(existingSnippet.Id);
-                        }
-                        
-                        foreach (var snippet in importedSnippets)
-                        {
-                            snippet.Id = Guid.NewGuid().ToString(); // Generate new ID
-                            await _snippetService.AddSnippetAsync(snippet);
-                        }
-                    }
-                    else if (result == MessageBoxResult.No)
-                    {
-                        // Add mode: Just add imported snippets
-                        foreach (var snippet in importedSnippets)
-                        {
-                            snippet.Id = Guid.NewGuid().ToString(); // Generate new ID
-                            await _snippetService.AddSnippetAsync(snippet);
-                        }
-                    }
-
-                    // Reload snippets in UI
-                    await LoadSnippetsAsync();
-                    UpdateTagsFilter();
-                    ApplyNewFilteringSystem();
-                    
-                    // Apply theme if in dark mode
-                    if (_isDarkTheme)
-                    {
-                        UpdateSnippetElementsTheme(true);
-                    }
-
-                    MessageBox.Show(
-                        $"Successfully imported {importedSnippets.Count} snippet(s).",
-                        "Import Successful",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information
-                    );
-                    
-                    System.Diagnostics.Debug.WriteLine($"Imported {importedSnippets.Count} snippets from {openDialog.FileName}");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error importing snippets: {ex.Message}");
-                MessageBox.Show(
-                    $"Failed to import snippets:\n{ex.Message}",
-                    "Import Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error
-                );
             }
         }
 
@@ -1304,73 +702,6 @@ namespace CopyPastaNative
                     ReloadSampleDataButton.Background = isDark ? new SolidColorBrush(Color.FromRgb(64, 64, 64)) : new SolidColorBrush(Colors.White);
                 }
                 
-                if (ExportButton != null)
-                {
-                    ExportButton.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                    ExportButton.Background = isDark ? new SolidColorBrush(Color.FromRgb(64, 64, 64)) : new SolidColorBrush(Colors.White);
-                }
-                
-                if (ImportButton != null)
-                {
-                    ImportButton.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                    ImportButton.Background = isDark ? new SolidColorBrush(Color.FromRgb(64, 64, 64)) : new SolidColorBrush(Colors.White);
-                }
-                
-                if (ShowFavoritesOnlyCheckBox != null)
-                {
-                    ShowFavoritesOnlyCheckBox.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                }
-                
-                if (MultiSelectModeCheckBox != null)
-                {
-                    MultiSelectModeCheckBox.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                }
-                
-                if (SelectAllButton != null)
-                {
-                    SelectAllButton.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                    SelectAllButton.Background = isDark ? new SolidColorBrush(Color.FromRgb(64, 64, 64)) : new SolidColorBrush(Colors.White);
-                }
-                
-                if (DeselectAllButton != null)
-                {
-                    DeselectAllButton.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                    DeselectAllButton.Background = isDark ? new SolidColorBrush(Color.FromRgb(64, 64, 64)) : new SolidColorBrush(Colors.White);
-                }
-                
-                if (SelectedCountText != null)
-                {
-                    SelectedCountText.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                }
-                
-                // Update Search History panel
-                if (SearchHistoryPanel != null)
-                {
-                    SearchHistoryPanel.Background = isDark ? new SolidColorBrush(Color.FromRgb(64, 64, 64)) : new SolidColorBrush(Colors.White);
-                    SearchHistoryPanel.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                }
-                
-                if (SearchHistoryListBox != null)
-                {
-                    SearchHistoryListBox.Background = isDark ? new SolidColorBrush(Color.FromRgb(64, 64, 64)) : new SolidColorBrush(Colors.White);
-                    SearchHistoryListBox.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                }
-                
-                if (ClearHistoryButton != null)
-                {
-                    ClearHistoryButton.Foreground = isDark ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.Black);
-                    ClearHistoryButton.Background = isDark ? new SolidColorBrush(Color.FromRgb(64, 64, 64)) : new SolidColorBrush(Colors.White);
-                }
-                
-                // Update Statistics panel
-                UpdateStatisticsPanelTheme(isDark);
-                
-                // Update left panel background
-                if (LeftPanel != null)
-                {
-                    LeftPanel.Background = isDark ? new SolidColorBrush(Colors.Transparent) : new SolidColorBrush(Colors.White);
-                }
-                
                 // Update main content grid background
                 if (MainContentGrid != null)
                 {
@@ -1379,9 +710,6 @@ namespace CopyPastaNative
                 
                 // Update snippet cards and their content
                 UpdateSnippetCardsTheme(isDark);
-                
-                // Update scrollbar colors for visibility
-                UpdateScrollBarTheme(isDark);
                 
                 System.Diagnostics.Debug.WriteLine($"Updated theme for all snippet elements: {(isDark ? "Dark" : "Light")}");
             }
@@ -1408,32 +736,21 @@ namespace CopyPastaNative
                         // Dark theme colors for snippet cards
                         SnippetsListView.Background = new SolidColorBrush(Color.FromRgb(48, 48, 48));
                         
-                        // Update selection highlight colors for dark theme
-                        Application.Current.Resources["SelectionHighlight"] = new SolidColorBrush(Color.FromRgb(80, 80, 140)); // Dark blue
-                        Application.Current.Resources["SelectionBorder"] = new SolidColorBrush(Color.FromRgb(120, 120, 200)); // Lighter blue
-                        
                         // Force update of Material Design resources for dark theme
-                        Application.Current.Resources["MaterialDesignPaper"] = new SolidColorBrush(Color.FromRgb(64, 64, 64));
+                        Application.Current.Resources["MaterialDesignPaper"] = new SolidColorBrush(Color.FromRgb(48, 48, 48));
                         Application.Current.Resources["MaterialDesignBody"] = new SolidColorBrush(Colors.White);
-                        Application.Current.Resources["MaterialDesignDivider"] = new SolidColorBrush(Color.FromRgb(100, 100, 100));
+                        Application.Current.Resources["MaterialDesignDivider"] = new SolidColorBrush(Color.FromRgb(80, 80, 80));
                     }
                     else
                     {
                         // Light theme colors for snippet cards
                         SnippetsListView.Background = new SolidColorBrush(Colors.White);
                         
-                        // Update selection highlight colors for light theme
-                        Application.Current.Resources["SelectionHighlight"] = new SolidColorBrush(Color.FromArgb(100, 255, 215, 0)); // Light gold
-                        Application.Current.Resources["SelectionBorder"] = new SolidColorBrush(Color.FromRgb(255, 215, 0)); // Gold border
-                        
                         // Force update of Material Design resources for light theme
                         Application.Current.Resources["MaterialDesignPaper"] = new SolidColorBrush(Colors.White);
                         Application.Current.Resources["MaterialDesignBody"] = new SolidColorBrush(Colors.Black);
                         Application.Current.Resources["MaterialDesignDivider"] = new SolidColorBrush(Color.FromRgb(224, 224, 224));
                     }
-                    
-                    // Update ListViewItem selection styling
-                    UpdateListViewItemSelectionStyle(isDark);
                     
                     // Force a complete visual refresh
                     SnippetsListView.InvalidateVisual();
@@ -1449,61 +766,6 @@ namespace CopyPastaNative
             }
         }
         
-        private void UpdateListViewItemSelectionStyle(bool isDark)
-        {
-            try
-            {
-                // Update the selection highlight color for ListViewItems
-                var highlightColor = isDark ? Color.FromArgb(80, 70, 130, 180) : Color.FromArgb(150, 255, 215, 0);
-                var borderColor = isDark ? Color.FromRgb(100, 150, 200) : Color.FromRgb(255, 215, 0);
-                
-                // Find all ListViewItems and update their selection styling
-                if (SnippetsListView != null)
-                {
-                    foreach (ListViewItem item in SnippetsListView.Items)
-                    {
-                        if (item.IsSelected)
-                        {
-                            item.Background = new SolidColorBrush(highlightColor);
-                            item.BorderBrush = new SolidColorBrush(borderColor);
-                            item.BorderThickness = new Thickness(3);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error updating ListViewItem selection style: {ex.Message}");
-            }
-        }
-
-        private void UpdateScrollBarTheme(bool isDark)
-        {
-            try
-            {
-                if (isDark)
-                {
-                    // Light gray scrollbar for dark theme
-                    Application.Current.Resources["ScrollBar.StaticThumb"] = new SolidColorBrush(Colors.LightGray);
-                    Application.Current.Resources["ScrollBar.MouseOverThumb"] = new SolidColorBrush(Colors.White);
-                    Application.Current.Resources["ScrollBar.PressedThumb"] = new SolidColorBrush(Colors.White);
-                    Application.Current.Resources["ScrollBar.StaticTrackBackground"] = new SolidColorBrush(Color.FromRgb(40, 40, 40));
-                }
-                else
-                {
-                    // Darker scrollbar for light theme
-                    Application.Current.Resources["ScrollBar.StaticThumb"] = new SolidColorBrush(Color.FromRgb(200, 200, 200));
-                    Application.Current.Resources["ScrollBar.MouseOverThumb"] = new SolidColorBrush(Color.FromRgb(150, 150, 150));
-                    Application.Current.Resources["ScrollBar.PressedThumb"] = new SolidColorBrush(Color.FromRgb(100, 100, 100));
-                    Application.Current.Resources["ScrollBar.StaticTrackBackground"] = new SolidColorBrush(Colors.LightGray);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error updating scrollbar theme: {ex.Message}");
-            }
-        }
-
         private void ForceUpdateSnippetCards(bool isDark)
         {
             try
@@ -1514,16 +776,13 @@ namespace CopyPastaNative
                 {
                     if (isDark)
                     {
-                        // Use darker background that matches the rest of the app
-                        card.Background = new SolidColorBrush(Color.FromRgb(64, 64, 64));
+                        card.Background = new SolidColorBrush(Color.FromRgb(48, 48, 48));
                         card.Foreground = new SolidColorBrush(Colors.White);
-                        card.BorderBrush = new SolidColorBrush(Color.FromRgb(80, 80, 80));
                     }
                     else
                     {
                         card.Background = new SolidColorBrush(Colors.White);
                         card.Foreground = new SolidColorBrush(Colors.Black);
-                        card.BorderBrush = new SolidColorBrush(Colors.LightGray);
                     }
                 }
                 
@@ -1555,7 +814,7 @@ namespace CopyPastaNative
                     }
                 }
                 
-                // Find all TextBoxes (if any remain) and update their colors
+                // Find all TextBoxes (code areas) and update their colors - THIS IS THE KEY FIX!
                 var textBoxes = FindVisualChildren<TextBox>(SnippetsListView);
                 foreach (var textBox in textBoxes)
                 {
@@ -1573,23 +832,7 @@ namespace CopyPastaNative
                     }
                 }
                 
-                // Find all TextEditors (AvalonEdit) and update their colors
-                var textEditors = FindVisualChildren<ICSharpCode.AvalonEdit.TextEditor>(SnippetsListView);
-                foreach (var textEditor in textEditors)
-                {
-                    if (isDark)
-                    {
-                        textEditor.Background = new SolidColorBrush(Color.FromRgb(64, 64, 64)); // Dark gray background
-                        textEditor.Foreground = new SolidColorBrush(Colors.White); // WHITE TEXT for dark mode
-                    }
-                    else
-                    {
-                        textEditor.Background = new SolidColorBrush(Colors.White); // White background
-                        textEditor.Foreground = new SolidColorBrush(Colors.Black); // BLACK TEXT for light mode
-                    }
-                }
-                
-                System.Diagnostics.Debug.WriteLine($"Force updated {snippetCards.Count()} snippet cards, {textBoxes.Count()} text boxes, {textEditors.Count()} text editors for {(isDark ? "dark" : "light")} theme");
+                System.Diagnostics.Debug.WriteLine($"Force updated {snippetCards.Count()} snippet cards, {textBoxes.Count()} text boxes for {(isDark ? "dark" : "light")} theme");
             }
             catch (Exception ex)
             {
@@ -1611,61 +854,33 @@ namespace CopyPastaNative
             return children;
         }
 
-        private async void NewSnippetButton_Click(object sender, RoutedEventArgs e)
+        private void NewSnippetButton_Click(object sender, RoutedEventArgs e)
         {
             var snippetDialog = new SnippetDialog();
             if (snippetDialog.ShowDialog() == true)
             {
                 var newSnippet = snippetDialog.Snippet;
-                
-                // Check for potential duplicates
-                var potentialDuplicates = await _snippetService.FindPotentialDuplicatesAsync(newSnippet);
-                
-                if (potentialDuplicates.Count > 0)
+                _ = Task.Run(async () =>
                 {
-                    // Build message showing duplicate details
-                    var message = $"Found {potentialDuplicates.Count} potential duplicate snippet(s):\n\n";
-                    foreach (var dup in potentialDuplicates.Take(5)) // Show max 5 duplicates
+                    await _snippetService.AddSnippetAsync(newSnippet);
+                    await Dispatcher.InvokeAsync(async () =>
                     {
-                        message += $"• {dup.Title} ({dup.Language})\n";
-                    }
-                    if (potentialDuplicates.Count > 5)
-                    {
-                        message += $"... and {potentialDuplicates.Count - 5} more\n";
-                    }
-                    message += "\nDo you still want to create this snippet?";
-                    
-                    var result = MessageBox.Show(
-                        message,
-                        "Potential Duplicate Detected",
-                        MessageBoxButton.YesNo,
-                        MessageBoxImage.Warning
-                    );
-                    
-                    if (result == MessageBoxResult.No)
-                    {
-                        System.Diagnostics.Debug.WriteLine("User cancelled creating duplicate snippet");
-                        return; // User cancelled
-                    }
-                }
-                
-                // Proceed with creating the snippet
-                await _snippetService.AddSnippetAsync(newSnippet);
-                await LoadSnippetsAsync();
-                UpdateTagsFilter();
-                ApplyNewFilteringSystem();
-                UpdateStatistics(); // Update statistics after adding
-                
-                // CRITICAL: Apply current theme to maintain consistency after adding new snippet
-                if (_isDarkTheme)
-                {
-                    System.Diagnostics.Debug.WriteLine("Applying dark theme after creating new snippet");
-                    UpdateSnippetElementsTheme(true);
-                }
+                        await LoadSnippetsAsync();
+                        UpdateTagsFilter();
+                        ApplyNewFilteringSystem(); // Use new filtering system
+                        
+                        // CRITICAL: Apply current theme to maintain consistency after adding new snippet
+                        if (_isDarkTheme)
+                        {
+                            System.Diagnostics.Debug.WriteLine("Applying dark theme after creating new snippet");
+                            UpdateSnippetElementsTheme(true);
+                        }
+                    });
+                });
             }
         }
 
-        private async void EditButton_Click(object sender, RoutedEventArgs e)
+        private void EditButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button button && button.Tag is Snippet snippet)
             {
@@ -1673,51 +888,23 @@ namespace CopyPastaNative
                 if (snippetDialog.ShowDialog() == true)
                 {
                     var updatedSnippet = snippetDialog.Snippet;
-                    
-                    // Check for potential duplicates (excluding the current snippet being edited)
-                    var potentialDuplicates = await _snippetService.FindPotentialDuplicatesAsync(updatedSnippet);
-                    
-                    if (potentialDuplicates.Count > 0)
+                    _ = Task.Run(async () =>
                     {
-                        // Build message showing duplicate details
-                        var message = $"Found {potentialDuplicates.Count} potential duplicate snippet(s):\n\n";
-                        foreach (var dup in potentialDuplicates.Take(5)) // Show max 5 duplicates
+                        await _snippetService.UpdateSnippetAsync(updatedSnippet);
+                        await Dispatcher.InvokeAsync(async () =>
                         {
-                            message += $"• {dup.Title} ({dup.Language})\n";
-                        }
-                        if (potentialDuplicates.Count > 5)
-                        {
-                            message += $"... and {potentialDuplicates.Count - 5} more\n";
-                        }
-                        message += "\nDo you still want to save these changes?";
-                        
-                        var result = MessageBox.Show(
-                            message,
-                            "Potential Duplicate Detected",
-                            MessageBoxButton.YesNo,
-                            MessageBoxImage.Warning
-                        );
-                        
-                        if (result == MessageBoxResult.No)
-                        {
-                            System.Diagnostics.Debug.WriteLine("User cancelled saving duplicate snippet");
-                            return; // User cancelled
-                        }
-                    }
-                    
-                    // Proceed with updating the snippet
-                    await _snippetService.UpdateSnippetAsync(updatedSnippet);
-                    await LoadSnippetsAsync();
-                    UpdateTagsFilter();
-                    ApplyNewFilteringSystem();
-                    UpdateStatistics(); // Update statistics after editing
-                    
-                    // CRITICAL: Apply current theme to maintain consistency after editing snippet
-                    if (_isDarkTheme)
-                    {
-                        System.Diagnostics.Debug.WriteLine("Applying dark theme after editing snippet");
-                        UpdateSnippetElementsTheme(true);
-                    }
+                            await LoadSnippetsAsync();
+                            UpdateTagsFilter();
+                            ApplyNewFilteringSystem(); // Use new filtering system
+                            
+                            // CRITICAL: Apply current theme to maintain consistency after editing snippet
+                            if (_isDarkTheme)
+                            {
+                                System.Diagnostics.Debug.WriteLine("Applying dark theme after editing snippet");
+                                UpdateSnippetElementsTheme(true);
+                            }
+                        });
+                    });
                 }
             }
         }
@@ -1742,7 +929,6 @@ namespace CopyPastaNative
                             await LoadSnippetsAsync();
                             UpdateTagsFilter();
                             ApplyNewFilteringSystem(); // Use new filtering system
-                            UpdateStatistics(); // Update statistics after deleting
                             
                             // CRITICAL: Apply current theme to maintain consistency after deleting snippet
                             if (_isDarkTheme)
@@ -1753,324 +939,6 @@ namespace CopyPastaNative
                         });
                     });
                 }
-            }
-        }
-
-        private async void FavoriteButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (sender is Button button && button.Tag is Snippet snippet)
-                {
-                    // Toggle favorite status
-                    snippet.IsFavorite = !snippet.IsFavorite;
-                    
-                    // Save the change
-                    await _snippetService.UpdateSnippetAsync(snippet);
-                    
-                    // Reload snippets to reflect changes
-                    await LoadSnippetsAsync();
-                    ApplyNewFilteringSystem();
-                    
-                    System.Diagnostics.Debug.WriteLine($"Toggled favorite for snippet: {snippet.Title} (IsFavorite: {snippet.IsFavorite})");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error toggling favorite: {ex.Message}");
-                MessageBox.Show($"Failed to toggle favorite: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        private void ShowFavoritesOnly_Changed(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (sender is CheckBox checkBox)
-                {
-                    _showFavoritesOnly = checkBox.IsChecked == true;
-                    ApplyNewFilteringSystem();
-                    System.Diagnostics.Debug.WriteLine($"Show favorites only: {_showFavoritesOnly}");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error changing favorites filter: {ex.Message}");
-            }
-        }
-
-        private void MultiSelectMode_Changed(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (sender is CheckBox checkBox)
-                {
-                    _isMultiSelectMode = checkBox.IsChecked == true;
-                    
-                    // Show/hide bulk actions panel
-                    if (BulkActionsPanel != null)
-                    {
-                        BulkActionsPanel.Visibility = _isMultiSelectMode ? Visibility.Visible : Visibility.Collapsed;
-                    }
-                    
-                    // Update ListView selection mode
-                    if (SnippetsListView != null)
-                    {
-                        SnippetsListView.SelectionMode = _isMultiSelectMode ? SelectionMode.Extended : SelectionMode.Single;
-                        
-                        // Clear selections when exiting multi-select mode
-                        if (!_isMultiSelectMode)
-                        {
-                            SnippetsListView.SelectedItems.Clear();
-                        }
-                    }
-                    
-                    UpdateSelectedCount();
-                    System.Diagnostics.Debug.WriteLine($"Multi-select mode: {_isMultiSelectMode}");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error changing multi-select mode: {ex.Message}");
-            }
-        }
-
-        private void SnippetsListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            try
-            {
-                UpdateSelectedCount();
-                
-                // Update visual highlighting for all items in the ListView
-                if (SnippetsListView != null && _isMultiSelectMode)
-                {
-                    var highlightColor = _isDarkTheme ? Color.FromArgb(80, 70, 130, 180) : Color.FromArgb(150, 255, 215, 0);
-                    var borderColor = _isDarkTheme ? Color.FromRgb(100, 150, 200) : Color.FromRgb(255, 215, 0);
-                    
-                    // Update all ListViewItems
-                    Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        var items = FindVisualChildren<ListViewItem>(SnippetsListView);
-                        foreach (var item in items)
-                        {
-                            if (item.IsSelected)
-                            {
-                                item.Background = new SolidColorBrush(highlightColor);
-                                item.BorderBrush = new SolidColorBrush(borderColor);
-                                item.BorderThickness = new Thickness(3);
-                            }
-                            else
-                            {
-                                item.Background = new SolidColorBrush(Colors.Transparent);
-                                item.BorderBrush = null;
-                                item.BorderThickness = new Thickness(0);
-                            }
-                        }
-                    }), System.Windows.Threading.DispatcherPriority.Loaded);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in selection changed: {ex.Message}");
-            }
-        }
-
-        private void SnippetCard_MouseDown(object sender, MouseButtonEventArgs e)
-        {
-            try
-            {
-                // Only handle when in multi-select mode
-                if (!_isMultiSelectMode)
-                    return;
-
-                // Find the snippet from the DataContext
-                if (sender is FrameworkElement element && element.DataContext is Snippet snippet)
-                {
-                    // Toggle selection
-                    if (SnippetsListView != null)
-                    {
-                        if (SnippetsListView.SelectedItems.Contains(snippet))
-                        {
-                            // Deselect
-                            SnippetsListView.SelectedItems.Remove(snippet);
-                        }
-                        else
-                        {
-                            // Select
-                            SnippetsListView.SelectedItems.Add(snippet);
-                        }
-                        
-                        System.Diagnostics.Debug.WriteLine($"Toggled selection for snippet: {snippet.Title}");
-                    }
-                }
-                
-                e.Handled = true;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in snippet card mouse down: {ex.Message}");
-            }
-        }
-
-        private void SnippetsListView_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-        {
-            try
-            {
-                if (SnippetsListView == null) return;
-
-                var scrollViewer = GetChildOfType<ScrollViewer>(SnippetsListView);
-                if (scrollViewer != null)
-                {
-                    // Calculate smoother scroll amount (smaller increment)
-                    var offset = scrollViewer.VerticalOffset;
-                    var delta = e.Delta > 0 ? -15.0 : 15.0; // Small, consistent increment
-                    
-                    // Apply smooth scrolling
-                    scrollViewer.ScrollToVerticalOffset(offset + delta);
-                    
-                    e.Handled = true;
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in PreviewMouseWheel: {ex.Message}");
-            }
-        }
-
-        private static T? GetChildOfType<T>(DependencyObject? depObj) where T : class
-        {
-            if (depObj == null) return null;
-
-            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(depObj); i++)
-            {
-                var child = VisualTreeHelper.GetChild(depObj, i);
-
-                if (child is T result)
-                {
-                    return result;
-                }
-
-                var childOfType = GetChildOfType<T>(child);
-                if (childOfType != null)
-                {
-                    return childOfType;
-                }
-            }
-
-            return null;
-        }
-
-        private void UpdateSelectedCount()
-        {
-            try
-            {
-                if (SelectedCountText != null && SnippetsListView != null)
-                {
-                    var count = SnippetsListView.SelectedItems.Count;
-                    if (count > 0)
-                    {
-                        SelectedCountText.Text = $"{count} item(s) selected";
-                        SelectedCountText.Visibility = Visibility.Visible;
-                    }
-                    else
-                    {
-                        SelectedCountText.Text = "";
-                        SelectedCountText.Visibility = Visibility.Collapsed;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error updating selected count: {ex.Message}");
-            }
-        }
-
-        private void SelectAllButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (SnippetsListView != null)
-                {
-                    SnippetsListView.SelectAll();
-                    UpdateSelectedCount();
-                    System.Diagnostics.Debug.WriteLine("Selected all items");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error selecting all: {ex.Message}");
-            }
-        }
-
-        private void DeselectAllButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (SnippetsListView != null)
-                {
-                    SnippetsListView.SelectedItems.Clear();
-                    UpdateSelectedCount();
-                    System.Diagnostics.Debug.WriteLine("Deselected all items");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error deselecting all: {ex.Message}");
-            }
-        }
-
-        private async void DeleteSelectedButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (SnippetsListView?.SelectedItems == null || SnippetsListView.SelectedItems.Count == 0)
-                {
-                    MessageBox.Show("No items selected.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-
-                var selectedCount = SnippetsListView.SelectedItems.Count;
-                var result = MessageBox.Show(
-                    $"Are you sure you want to delete {selectedCount} selected snippet(s)?",
-                    "Confirm Bulk Delete",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Warning);
-
-                if (result == MessageBoxResult.Yes)
-                {
-                    // Collect selected snippets
-                    var selectedSnippets = SnippetsListView.SelectedItems.Cast<Snippet>().ToList();
-                    
-                    // Delete each snippet
-                    foreach (var snippet in selectedSnippets)
-                    {
-                        await _snippetService.DeleteSnippetAsync(snippet.Id);
-                    }
-                    
-                    // Reload and refresh
-                    await LoadSnippetsAsync();
-                    UpdateTagsFilter();
-                    ApplyNewFilteringSystem();
-                    UpdateStatistics();
-                    
-                    if (_isDarkTheme)
-                    {
-                        UpdateSnippetElementsTheme(true);
-                    }
-                    
-                    MessageBox.Show(
-                        $"Successfully deleted {selectedCount} snippet(s).",
-                        "Bulk Delete Complete",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
-                    
-                    System.Diagnostics.Debug.WriteLine($"Bulk deleted {selectedCount} snippets");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in bulk delete: {ex.Message}");
-                MessageBox.Show($"Failed to delete selected snippets: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -2088,86 +956,6 @@ namespace CopyPastaNative
                     // Only show error if clipboard operation actually fails
                     MessageBox.Show($"Failed to copy code: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
-            }
-        }
-
-        private void CodeEditor_Loaded(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (sender is TextEditor editor && editor.DataContext is Snippet snippet)
-                {
-                    // Set the code text
-                    editor.Text = snippet.Code;
-                    
-                    // Set syntax highlighting based on language
-                    SetSyntaxHighlighting(editor, snippet.Language);
-                    
-                    // Apply theme colors
-                    if (_isDarkTheme)
-                    {
-                        editor.Background = new SolidColorBrush(Color.FromRgb(64, 64, 64));
-                        editor.Foreground = new SolidColorBrush(Colors.White);
-                    }
-                    else
-                    {
-                        editor.Background = new SolidColorBrush(Colors.White);
-                        editor.Foreground = new SolidColorBrush(Colors.Black);
-                    }
-                    
-                    System.Diagnostics.Debug.WriteLine($"Code editor loaded for snippet: {snippet.Title} (Language: {snippet.Language})");
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error loading code editor: {ex.Message}");
-            }
-        }
-
-        private void SetSyntaxHighlighting(TextEditor editor, string language)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(language))
-                {
-                    editor.SyntaxHighlighting = null;
-                    return;
-                }
-
-                var languageLower = language.ToLowerInvariant();
-                
-                // Map language names to highlighting definitions
-                IHighlightingDefinition? highlighting = languageLower switch
-                {
-                    "javascript" or "js" => HighlightingManager.Instance.GetDefinition("JavaScript"),
-                    "typescript" or "ts" => HighlightingManager.Instance.GetDefinition("TypeScript"),
-                    "python" => HighlightingManager.Instance.GetDefinition("Python"),
-                    "csharp" or "cs" or "c#" => HighlightingManager.Instance.GetDefinition("C#"),
-                    "java" => HighlightingManager.Instance.GetDefinition("Java"),
-                    "cpp" or "c++" or "cplusplus" => HighlightingManager.Instance.GetDefinition("C++"),
-                    "c" => HighlightingManager.Instance.GetDefinition("C"),
-                    "xml" => HighlightingManager.Instance.GetDefinition("XML"),
-                    "html" => HighlightingManager.Instance.GetDefinition("HTML"),
-                    "css" => HighlightingManager.Instance.GetDefinition("CSS"),
-                    "json" => HighlightingManager.Instance.GetDefinition("JSON"),
-                    "sql" => HighlightingManager.Instance.GetDefinition("SQL"),
-                    "powershell" or "ps1" => HighlightingManager.Instance.GetDefinition("PowerShell"),
-                    "bash" or "sh" => HighlightingManager.Instance.GetDefinition("Bash"),
-                    "php" => HighlightingManager.Instance.GetDefinition("PHP"),
-                    "ruby" => HighlightingManager.Instance.GetDefinition("Ruby"),
-                    "go" or "golang" => HighlightingManager.Instance.GetDefinition("Go"),
-                    "rust" => HighlightingManager.Instance.GetDefinition("Rust"),
-                    "swift" => HighlightingManager.Instance.GetDefinition("Swift"),
-                    "kotlin" => HighlightingManager.Instance.GetDefinition("Kotlin"),
-                    _ => null
-                };
-
-                editor.SyntaxHighlighting = highlighting;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error setting syntax highlighting for language '{language}': {ex.Message}");
-                editor.SyntaxHighlighting = null;
             }
         }
 
